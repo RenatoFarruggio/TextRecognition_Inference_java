@@ -1,0 +1,85 @@
+plugins {
+    id 'java'
+}
+repositories {
+    jcenter()
+}
+
+/* **************************** */
+/*  HAVING TROUBLES? CHECK OUT  */
+/*  https://mvnrepository.com/  */
+/* **************************** */
+
+// OLD
+/*
+dependencies {
+    implementation "ai.djl:api:0.4.0"
+    implementation "ai.djl:repository:0.4.0"
+    runtimeOnly "ai.djl.pytorch:pytorch-model-zoo:0.4.0"
+    runtimeOnly "ai.djl.pytorch:pytorch-native-auto:1.4.0"
+}
+*/
+
+// NEW //
+/*dependencies {
+    implementation "ai.djl:api:0.11.0"
+    //implementation "ai.djl:repository:0.4.1"
+    //implementation platform("ai.djl:bom:0.11.0")
+
+    // PYTORCH //
+
+    // https://mvnrepository.com/artifact/ai.djl.pytorch/pytorch-engine
+    implementation group: 'ai.djl.pytorch', name: 'pytorch-engine', version: '0.11.0'
+
+
+
+    runtimeOnly "ai.djl.pytorch:pytorch-model-zoo:0.11.0"
+    runtimeOnly "ai.djl.pytorch:pytorch-native-auto:1.8.1"
+
+
+    // TENSORFLOW //
+
+    // https://mvnrepository.com/artifact/ai.djl.tensorflow/tensorflow-engine
+    implementation group: 'ai.djl.tensorflow', name: 'tensorflow-engine', version: '0.11.0'
+
+
+    runtimeOnly "ai.djl.tensorflow:tensorflow-model-zoo:0.11.0"
+
+    // https://mvnrepository.com/artifact/ai.djl.tensorflow/tensorflow-native-auto
+    runtimeOnly group: 'ai.djl.tensorflow', name: 'tensorflow-native-auto', version: '2.4.1'
+
+    runtime "ai.djl.tensorflow:tensorflow-native-cpu:2.4.1:win-x86_64"
+
+
+    // PADDLEPADDLE //
+    runtime "ai.djl.paddlepaddle:paddlepaddle-engine:0.11.0"
+    implementation "ai.djl.paddlepaddle:paddlepaddle-model-zoo:0.11.0"
+}
+*/
+/// LOGGER ///
+/*dependencies {
+
+    // https://mvnrepository.com/artifact/org.slf4j/slf4j-simple
+    testImplementation group: 'org.slf4j', name: 'slf4j-simple', version: '2.0.0-alpha1'
+
+    // https://mvnrepository.com/artifact/org.slf4j/slf4j-api
+    implementation group: 'org.slf4j', name: 'slf4j-api', version: '2.0.0-alpha1'
+
+    // https://mvnrepository.com/artifact/org.slf4j/slf4j-log4j12
+    testImplementation group: 'org.slf4j', name: 'slf4j-log4j12', version: '2.0.0-alpha1'
+}*/
+
+//  PaddleOCR  //
+dependencies {
+    // %mavenRepo snapshots https://oss.sonatype.org/content/repositories/snapshots/
+    implementation "ai.djl:api:0.11.0"
+    implementation "ai.djl.paddlepaddle:paddlepaddle-native-auto:2.0.2"
+    implementation "ai.djl.paddlepaddle:paddlepaddle-model-zoo:0.11.0"
+
+    // second engine to do preprocessing and postprocessing
+    implementation "ai.djl.pytorch:pytorch-engine:0.11.0"
+    implementation "ai.djl.pytorch:pytorch-native-auto:1.8.1"
+
+    implementation "org.slf4j:slf4j-api:1.7.26"
+    implementation "org.slf4j:slf4j-simple:1.7.26"
+}
