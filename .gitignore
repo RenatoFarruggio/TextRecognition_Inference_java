@@ -15,5 +15,12 @@ gradle-app.setting
 *.png
 *.jpg
 
+# Ignore csv files
+*.csv
+
+# Ignore xml files
+*.xml
+
 .idea
 /models/
+/test_images/

@@ -1,7 +1,5 @@
 package PaddleOCR;
 
-import ai.djl.MalformedModelException;
-import ai.djl.repository.zoo.ModelNotFoundException;
 import ai.djl.translate.TranslateException;
 
 import java.io.IOException;
@@ -9,11 +7,28 @@ import java.io.IOException;
 public class Main {
     public static void main(String[] args) {
 
-        String imageName = "img_5.png";
+        //String imageName = "img_10.jpg"; // "Please lower your volume when you pass residental area"
+        //String imageName = "img_11.jpg"; // "Beware of maintenance vehicles"
+        String imageName = "img_1.jpg";
 
+        Long start_load = System.currentTimeMillis();
+        InferenceModel inference = new InferenceModel();
+        Long end_load = System.currentTimeMillis();
+
+        Long start_eval = System.currentTimeMillis();
+        try {
+            inference.inference_on_example_image(imageName);
+        } catch (IOException | TranslateException e) {
+            e.printStackTrace();
+        }
+        Long end_eval = System.currentTimeMillis();
+        System.out.println("Load time: " + (end_load - start_load));
+        System.out.println("Eval time: " + (end_eval - start_eval));
+
+        /*
         Inference_v1 inferenceV1 = new Inference_v1();
         try {
-            inferenceV1.do_stuff(imageName);
+            inferenceV1.inference_on_example_image(imageName);
         } catch (MalformedModelException e) {
             e.printStackTrace();
         } catch (ModelNotFoundException e) {
@@ -23,6 +38,7 @@ public class Main {
         } catch (TranslateException e) {
             e.printStackTrace();
         }
+         */
 
     }
 

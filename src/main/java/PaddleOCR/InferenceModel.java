@@ -1,6 +1,9 @@
 package PaddleOCR;
 
+// TODO: save model locally
+
 import ai.djl.MalformedModelException;
+import ai.djl.inference.Predictor;
 import ai.djl.modality.Classifications;
 import ai.djl.modality.cv.Image;
 import ai.djl.modality.cv.ImageFactory;
@@ -16,9 +19,11 @@ import ai.djl.paddlepaddle.zoo.cv.wordrecognition.PpWordRecognitionTranslator;
 import ai.djl.repository.zoo.Criteria;
 import ai.djl.repository.zoo.ModelNotFoundException;
 import ai.djl.repository.zoo.ModelZoo;
+import ai.djl.repository.zoo.ZooModel;
 import ai.djl.translate.TranslateException;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -26,24 +31,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
-/* *********************** */
-/*  Heavily influenced by  */
-/* http://docs.djl.ai/jupyter/paddlepaddle/paddle_ocr_java.html#word-recgonition-model
- */
+public class InferenceModel {
 
-public class Inference_v1 {
+    private final Predictor<Image, DetectedObjects> detector;
+    private final Predictor<Image, String> recognizer;
 
-    public void inference_on_example_image(String imageName) throws MalformedModelException, ModelNotFoundException, IOException, TranslateException {
-        // Load image
-        //String url = "https://resources.djl.ai/images/flight_ticket.jpg";
-        //Image img = ImageFactory.getInstance().fromUrl(url);
-        String imagesFolder = "example_images/";
-        //String imageName = "img_11.jpg";
-        //String imageName = "img_5.png";
-        Image img = ImageFactory.getInstance().fromFile(Path.of(new File(imagesFolder + imageName).toURI()));
-        img.getWrappedImage();
-
-        img.save(new FileOutputStream("output_0_original.png"), "png");
+    public InferenceModel() {
 
         // Load text detection model
         var criteria1 = Criteria.builder()
@@ -52,9 +45,51 @@ public class Inference_v1 {
                 .optModelUrls("https://resources.djl.ai/test-models/paddleOCR/mobile/det_db.zip")
                 .optTranslator(new PpWordDetectionTranslator(new ConcurrentHashMap<String, String>()))
                 .build();
-        var detectionModel = ModelZoo.loadModel(criteria1);
-        var detector = detectionModel.newPredictor();
+        ZooModel<Image, DetectedObjects> detectionModel = null;
+        try {
+            detectionModel = ModelZoo.loadModel(criteria1);
+        } catch (IOException | ModelNotFoundException | MalformedModelException e) {
+            e.printStackTrace();
+        }
+        assert detectionModel != null;
+        this.detector = detectionModel.newPredictor();
 
+        // Load model for text recognition
+        var criteria3 = Criteria.builder()
+                .optEngine("PaddlePaddle")
+                .setTypes(Image.class, String.class)
+                .optModelUrls("https://resources.djl.ai/test-models/paddleOCR/mobile/rec_crnn.zip")
+                .optTranslator(new PpWordRecognitionTranslator())
+                .build();
+        ZooModel<Image, String> recognitionModel = null;
+        try {
+            recognitionModel = ModelZoo.loadModel(criteria3);
+        } catch (IOException | ModelNotFoundException | MalformedModelException e) {
+            e.printStackTrace();
+        }
+        assert recognitionModel != null;
+        this.recognizer = recognitionModel.newPredictor();
+    }
+
+    public void inference_on_example_image(String imageName) throws IOException, TranslateException {
+        // Load image
+        String imagesFolder = "example_images/";
+        //String imageName = "img_11.jpg";
+        //String imageName = "img_5.png";
+        Image img = ImageFactory.getInstance().fromFile(Path.of(new File(imagesFolder + imageName).toURI()));
+        img.getWrappedImage();
+
+        img.save(new FileOutputStream("output_0_original.png"), "png");
+/*
+        var criteria1 = Criteria.builder()
+                .optEngine("PaddlePaddle")
+                .setTypes(Image.class, DetectedObjects.class)
+                .optModelUrls("https://resources.djl.ai/test-models/paddleOCR/mobile/det_db.zip")
+                .optTranslator(new PpWordDetectionTranslator(new ConcurrentHashMap<String, String>()))
+                .build();
+        var detectionModel = ModelZoo.loadModel(criteria1);
+        this.detector = detectionModel.newPredictor();
+*/
         // Text detection
         var detectedObj = detector.predict(img);
         Image newImage = img.duplicate(Image.Type.TYPE_INT_ARGB);
@@ -66,26 +101,6 @@ public class Inference_v1 {
         // Cut out single textboxes
         List<DetectedObjects.DetectedObject> boxes = detectedObj.items();
 
-        // Load model for text orientation
-        var criteria2 = Criteria.builder()
-                .optEngine("PaddlePaddle")
-                .setTypes(Image.class, Classifications.class)
-                .optModelUrls("https://resources.djl.ai/test-models/paddleOCR/mobile/cls.zip")
-                .optTranslator(new PpWordRotateTranslator())
-                .build();
-        var rotateModel = ModelZoo.loadModel(criteria2);
-        var rotateClassifier = rotateModel.newPredictor();
-
-        // Load model for text recognition
-        var criteria3 = Criteria.builder()
-                .optEngine("PaddlePaddle")
-                .setTypes(Image.class, String.class)
-                .optModelUrls("https://resources.djl.ai/test-models/paddleOCR/mobile/rec_crnn.zip")
-                .optTranslator(new PpWordRecognitionTranslator())
-                .build();
-        var recognitionModel = ModelZoo.loadModel(criteria3);
-        var recognizer = recognitionModel.newPredictor();
-
         // Evaluate the whole picture
         List<String> names = new ArrayList<>();
         List<Double> prob = new ArrayList<>();
@@ -93,13 +108,6 @@ public class Inference_v1 {
 
         for (int i = 0; i < boxes.size(); i++) {
             Image subImg = getSubImage(img, boxes.get(i).getBoundingBox());
-            if (subImg.getHeight() * 1.0 / subImg.getWidth() > 1.5) {
-                subImg = rotateImg(subImg);
-            }
-            Classifications.Classification result = rotateClassifier.predict(subImg).best();
-            if ("Rotate".equals(result.getClassName()) && result.getProbability() > 0.8) {
-                subImg = rotateImg(subImg);
-            }
             String name = recognizer.predict(subImg);
             names.add(name);
             prob.add(-1.0);
@@ -113,11 +121,52 @@ public class Inference_v1 {
         newImage.save(new FileOutputStream("output_2_evaluated.png"), "png");
     }
 
-    Image rotateImg(Image image) {
-        try (NDManager manager = NDManager.newBaseManager()) {
-            NDArray rotated = NDImageUtils.rotate90(image.toNDArray(manager), 1);
-            return ImageFactory.getInstance().fromNDArray(rotated);
+    public Image loadImage(String imagesFolder, String imageName) {
+        try {
+            return ImageFactory.getInstance().fromFile(Path.of(new File(imagesFolder + imageName).toURI()));
+        } catch (IOException e) {
+            e.printStackTrace();
         }
+        return null;
+    }
+
+    public DetectedObjects detection(Image img) {
+        try {
+            return this.detector.predict(img);
+        } catch (TranslateException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    public List<String> recognition(Image img, DetectedObjects detectedObjects) {
+
+        List<DetectedObjects.DetectedObject> boxes = detectedObjects.items();
+
+        // Evaluate the whole picture
+        List<String> names = new ArrayList<>();
+        //List<Double> prob = new ArrayList<>();
+        //List<BoundingBox> rect = new ArrayList<>();
+
+        for (int i = 0; i < boxes.size(); i++) {
+            Image subImg = getSubImage(img, boxes.get(i).getBoundingBox());
+
+
+            String name = null;
+            try {
+                name = recognizer.predict(subImg);
+            } catch (TranslateException e) {
+                e.printStackTrace();
+            }
+            names.add(name);
+            //rect.add(boxes.get(i).getBoundingBox());
+
+            //printWordAndBoundingBox(name, boxes.get(i).getBoundingBox());
+        }
+
+        return names;
+//        newImage.drawBoundingBoxes(new DetectedObjects(names, prob, rect));
+//        newImage.getWrappedImage();
     }
 
     Image getSubImage(Image img, BoundingBox box) {
