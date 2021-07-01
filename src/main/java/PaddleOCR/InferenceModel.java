@@ -39,16 +39,15 @@ public class InferenceModel {
     /**
      * Constructor to create a model based on locally available files
      *
-     * @param detectionModelZip
-     * @param recognitionModelZip
+     * @param detectionModelZip The pre-trained model for text detection
+     * @param recognitionModelZip The pre-trained model for text recognition
      */
     public InferenceModel(File detectionModelZip, File recognitionModelZip) {
         // Load text detection model
         var criteria1 = Criteria.builder()
                 .optEngine("PaddlePaddle")
                 .setTypes(Image.class, DetectedObjects.class)
-                // TODO: replace url with input file
-                .optModelUrls("https://resources.djl.ai/test-models/paddleOCR/mobile/det_db.zip")
+                .optModelUrls(String.valueOf(detectionModelZip.toURI()))
                 .optTranslator(new PpWordDetectionTranslator(new ConcurrentHashMap<String, String>()))
                 .build();
         ZooModel<Image, DetectedObjects> detectionModel = null;
@@ -64,8 +63,7 @@ public class InferenceModel {
         var criteria3 = Criteria.builder()
                 .optEngine("PaddlePaddle")
                 .setTypes(Image.class, String.class)
-                // TODO: replace url with input file
-                .optModelUrls("https://resources.djl.ai/test-models/paddleOCR/mobile/rec_crnn.zip")
+                .optModelUrls(String.valueOf(recognitionModelZip.toURI()))
                 .optTranslator(new PpWordRecognitionTranslator())
                 .build();
         ZooModel<Image, String> recognitionModel = null;

@@ -2,6 +2,7 @@ package PaddleOCR;
 
 import ai.djl.translate.TranslateException;
 
+import java.io.File;
 import java.io.IOException;
 
 public class Main {
@@ -11,8 +12,14 @@ public class Main {
         //String imageName = "img_11.jpg"; // "Beware of maintenance vehicles"
         String imageName = "img_1.jpg";
 
+        String pathDetectionModel = "models/det_db.zip";
+        String pathRecognitionModel = "models/rec_crnn.zip";
+
+        File detectionModel = new File(pathDetectionModel);
+        File recognitionModel = new File(pathRecognitionModel);
+
         Long start_load = System.currentTimeMillis();
-        InferenceModel inference = new InferenceModel();
+        InferenceModel inference = new InferenceModel(detectionModel, recognitionModel);
         Long end_load = System.currentTimeMillis();
 
         Long start_eval = System.currentTimeMillis();
