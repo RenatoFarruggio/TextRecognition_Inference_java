@@ -12,6 +12,8 @@ public class Main {
         //String imageName = "img_11.jpg"; // "Beware of maintenance vehicles"
         String imageName = "img_1.jpg";
 
+        imageName = "example_images/" + imageName;
+
         String pathDetectionModel = "models/det_db.zip";
         String pathRecognitionModel = "models/rec_crnn.zip";
 

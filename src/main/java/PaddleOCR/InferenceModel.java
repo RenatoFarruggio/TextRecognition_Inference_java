@@ -22,16 +22,15 @@ import ai.djl.repository.zoo.ModelZoo;
 import ai.djl.repository.zoo.ZooModel;
 import ai.djl.translate.TranslateException;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.*;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class InferenceModel {
+public class InferenceModel implements AutoCloseable {
 
     private final Predictor<Image, DetectedObjects> detector;
     private final Predictor<Image, String> recognizer;
@@ -114,12 +113,12 @@ public class InferenceModel {
         this.recognizer = recognitionModel.newPredictor();
     }
 
-    public void inference_on_example_image(String imageName) throws IOException, TranslateException {
+    public BufferedImage inference_on_example_image(String imageName) throws IOException, TranslateException {
         // Load image
-        String imagesFolder = "example_images/";
+        //String imagesFolder = "example_images/";
         //String imageName = "img_11.jpg";
         //String imageName = "img_5.png";
-        Image img = ImageFactory.getInstance().fromFile(Path.of(new File(imagesFolder + imageName).toURI()));
+        Image img = ImageFactory.getInstance().fromFile(Path.of(new File(imageName).toURI()));
         img.getWrappedImage();
 
         img.save(new FileOutputStream("output_0_original.png"), "png");
@@ -153,6 +152,10 @@ public class InferenceModel {
         newImage.getWrappedImage();
 
         newImage.save(new FileOutputStream("output_2_evaluated.png"), "png");
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        newImage.save(out, "png");
+        return ImageIO.read(new ByteArrayInputStream(out.toByteArray()));
     }
 
     public Image loadImage(String imagesFolder, String imageName) {
@@ -238,4 +241,9 @@ public class InferenceModel {
         System.out.println("{word:" + word + ",\tbox:" + box + "}");
     }
 
+    @Override
+    public void close() throws Exception {
+        this.detector.close();
+        this.recognizer.close();
+    }
 }
