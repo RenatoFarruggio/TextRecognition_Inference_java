@@ -25,23 +25,6 @@ public class Main {
         System.out.println("Load time: " + (end_load - start_load));
         System.out.println("Eval time: " + (end_eval - start_eval));
 
-        /*
-        Inference_v1 inferenceV1 = new Inference_v1();
-        try {
-            inferenceV1.inference_on_example_image(imageName);
-        } catch (MalformedModelException e) {
-            e.printStackTrace();
-        } catch (ModelNotFoundException e) {
-            e.printStackTrace();
-        } catch (IOException e) {
-            e.printStackTrace();
-        } catch (TranslateException e) {
-            e.printStackTrace();
-        }
-         */
 
     }
-
-
-
 }

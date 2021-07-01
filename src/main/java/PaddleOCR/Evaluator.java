@@ -9,51 +9,63 @@ import ai.djl.modality.cv.output.DetectedObjects;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.*;
-import java.nio.file.Path;
 import java.util.*;
 import java.util.List;
-import java.util.stream.Collectors;
 
 import helpers.ImageHandler;
 import helpers.Converters;
+import helpers.DRAWMODE;
+
+
+/* ***   FINAL CSV   ***
+
+Information about picture
+ - imageName
+ - xResolution, yResolution
+
+Information about time
+ - msDet
+ - msRec
+ - msTot
+
+DETECTIONS:
+Information about how many shapes were detected
+ - tp, fn, fp
+
+Information about how good the detected shapes are overlapping with the ground truth
+ - iouAverage
+
+RECOGNITIONS:
+jaccard trigram distance
+jaccard distance (on characters), i.e. iou
+ */
 
 /**
- * Creates a csv file containing (currently the first option):
+ * Creates a csv file containing:
  *
  *  image_name,     name of the image
- *  ms_tot,         time it took to do text detection and text recognition
+ *  x_res,          width of the image
+ *  y_res,          height of the image
  *  ms_det,         time it took to do text detection
- *  iou_det,        intersection over union of textboxes
- *  max_stretch,    maximal value of length and width
- *  num_subimages,  number of textboxes found
  *  ms_rec,         time it took to recognize the text in all textboxes
- *  iou_rec,        intersection over union of letters
- *  jaccard_trigram_distance    sum of jaccard trigram distances between words found and words in ground truth
- *
- * OR
- * // TODO: write this
- *  image_name,     name of the image
- *
- *  ms_det,
- *  ms_rec,
- *  ms_tot,
- *
- *  iou,
- *  tp,
- *  fn,
- *  fp,
- *
- *  iou,
- *  jaccardTrigramDistance
+ *  ms_tot,         time it took to do text detection and text recognition
+ *  tp,             true positives: textboxes that were detected correctly
+ *  fn,             false negatives: textboxes in ground truth whose text was not detected
+ *  fp,             false positives: textboxes detected where there is no text
+ *  iou_avg,        average iou of detected textboxes: sum of all tp iou's divided by number of tp
+ *  jaccard_distance_recognition,
+ *                  intersection over union
+ *  jaccard_trigram_distance_recognition,
+ *                  sum of jaccard trigram distances between words found and words in ground truth
  */
 public class Evaluator {
 
     private class DetectionEvaluationResult {
-        double iou;      // intersection over union
-        int tp, fn, fp;  // true positives, false negatives, false positives
+        double avgIOU;      // intersection over union
+        Set<Textbox> tp, fn, fp;  // true positives, false negatives, false positives
 
-        DetectionEvaluationResult(double iou, int tp, int fn, int fp) {
-            this.iou = iou;
+        DetectionEvaluationResult(double avgIOU, Set<Textbox> tp, Set<Textbox> fn, Set<Textbox> fp) {
+            this.avgIOU = avgIOU;
             this.tp = tp;
             this.fn = fn;
             this.fp = fp;
@@ -61,11 +73,11 @@ public class Evaluator {
     }
 
     private class RecognitionEvaluationResult {
-        double iou, jaccardTrigramDistance;
+        double iou, jaccard_trigram_distance;
 
         RecognitionEvaluationResult(double iou, double jaccardTrigramDistance) {
             this.iou = iou;
-            this.jaccardTrigramDistance = jaccardTrigramDistance;
+            this.jaccard_trigram_distance = jaccardTrigramDistance; // würg
         }
     }
 
@@ -90,7 +102,7 @@ public class Evaluator {
         try (Writer w = new FileWriter(file_name_results)) {
             //try (Reader r = new FileReader(ground_truth))
             BufferedWriter csvWriter = new BufferedWriter(w);
-            csvWriter.append("image_name,ms_tot,ms_det,iou_det,max_stretch,num_subimages,ms_rec,iou_rec,jaccard_trigram_distance");
+            csvWriter.append("image_name,x_res,y_res,ms_det,ms_rec,ms_tot,tp,fn,fp,iou_avg,jaccard_distance_recognition,jaccard_trigram_distance_recognition");
             csvWriter.append(System.lineSeparator());
 
             // Define variables
@@ -102,10 +114,6 @@ public class Evaluator {
             RecognitionEvaluationResult recognitionEvaluationResult;
 
             Image img;
-            int max_stretch;
-            int num_subimages;
-
-            //Array of textbox lists
 
             HashMap<String, List<Textbox>> groundTruthTextboxes = getGroundTruthTextboxes(path_to_ground_truth);
             DetectedObjects detectedBoxes;
@@ -113,7 +121,6 @@ public class Evaluator {
             for (String imageName : imageNames) {
                 // 1. Load image
                 img = inferenceModel.loadImage(path_to_images, imageName);
-                max_stretch = Math.max(img.getHeight(), img.getWidth());
 
                 // 2. Text detection
                 start_det = System.currentTimeMillis();
@@ -126,14 +133,13 @@ public class Evaluator {
                 end_rec = System.currentTimeMillis();
 
                 // 4. Evaluate detections
-                System.out.println("Getting iou_det of img: " + imageName);
+                System.out.println("Evaluating detections of img: " + imageName + " ...");
                 String key = imageName.split("\\.", 2)[0];
                 List<Textbox> gtTextboxList = groundTruthTextboxes.get(key);
                 detectionEvaluationResult = evaluateDetections(img, detectedBoxes, gtTextboxList);
 
                 // 5. Evaluate recognitions
                 recognitionEvaluationResult = evaluateRecognitions(recognizedText); // TODO: add ground truth
-                num_subimages = recognizedText.size();
 
                 // 6. Calculate runtimes
                 ms_tot = end_rec - start_det;
@@ -141,29 +147,47 @@ public class Evaluator {
                 ms_rec = end_rec - start_rec;
 
                 // 7. Write data to file
-                // TODO: Use either option one or option two
-                append_line_option_one(csvWriter, imageName, ms_tot, ms_det,
-                        detectionEvaluationResult.iou, max_stretch, num_subimages, ms_rec, recognitionEvaluationResult.iou, recognitionEvaluationResult.jaccardTrigramDistance);
+                String line = format_csv_line(imageName, img.getWidth(), img.getHeight(),
+                        ms_det, ms_rec, ms_tot,
+                        detectionEvaluationResult.tp.size(),
+                        detectionEvaluationResult.fn.size(),
+                        detectionEvaluationResult.fp.size(),
+                        detectionEvaluationResult.avgIOU,
+                        recognitionEvaluationResult.iou,
+                        recognitionEvaluationResult.jaccard_trigram_distance);
+                csvWriter.write(line);
+                System.out.println(line);
 
-                // TODO: draw textboxes
                 // 8. Draw textboxes on the picture
-                List<Textbox> textboxesList = Converters.DetectedObjects2ListOfTextboxes(detectedBoxes, img.getWidth(), img.getHeight());
-
                 BufferedImage bufferedImage = ImageHandler.loadImage(path_to_images + imageName);
                 if (save_output_images) {
-                    drawBoxes(
-                            bufferedImage,
-                            textboxesList,
-                            DRAWMODE.predictionExtended,
-                            path_to_output,
-                            imageName);
+
+                    // Draw all boxes
                     drawBoxes(
                             bufferedImage,
                             gtTextboxList,
-                            DRAWMODE.gt,
-                            path_to_output,
-                            imageName);
+                            DRAWMODE.gt);
+                    drawBoxes(
+                            bufferedImage,
+                            List.copyOf(detectionEvaluationResult.fn),
+                            DRAWMODE.fn);
+                    drawBoxes(
+                            bufferedImage,
+                            List.copyOf(detectionEvaluationResult.fp),
+                            DRAWMODE.fp);
+                    drawBoxes(
+                            bufferedImage,
+                            List.copyOf(detectionEvaluationResult.tp),
+                            DRAWMODE.tp);
 
+                    // Draw a color legend
+                    drawColorLegend(bufferedImage);
+
+                    // Save image
+                    String name = imageName.split("\\.")[0];  // e.g.: img_1
+                    String type = imageName.split("\\.")[1];  // e.g.: jpg
+
+                    ImageHandler.saveImage(bufferedImage, path_to_output, name + "_detection_result", type);
                 }
 
             }
@@ -176,28 +200,9 @@ public class Evaluator {
 
     }
 
-    private enum DRAWMODE {
-        gt,
-        predictionExtended,
-        prediction,
-    }
+    private void drawBoxes(BufferedImage img, List<Textbox> textboxes, DRAWMODE mode) { // e.g.: "evaluations/", "img_2.png"
 
-    // CARE: THIS WILL CHANGE THE BUFFERED IMAGE img!
-    private void drawBoxes(BufferedImage img, List<Textbox> textboxes, DRAWMODE mode,
-                           String outputImageFolder, String imageName) { // e.g.: "evaluations/", "img_2.png"
-        assert imageName.contains("\\.");
-
-        Color color = Color.WHITE; // default
-        switch (mode) {
-            case gt:
-                color = Color.BLACK;  break;
-
-            case predictionExtended:
-                color = Color.GREEN;   break;
-
-            case prediction:
-                color = Color.CYAN;   break;
-        }
+        Color color = DRAWMODE.getColor(mode);
 
         for (Textbox textbox : textboxes) {
             ImageHandler.drawRectangle(img,
@@ -207,10 +212,26 @@ public class Evaluator {
                     textbox.yMax,
                     color);
         }
+    }
 
-        String name = imageName.split("\\.")[0];
-        String type = imageName.split("\\.")[1];
-        ImageHandler.saveImage(img, outputImageFolder, name, type);
+    private void drawColorLegend(BufferedImage img) {
+        int linespace = 2;
+        int textheight = 10; // THIS DOES NOT CHANGE TEXT SIZE
+
+
+        List<DRAWMODE> order = new ArrayList<DRAWMODE>(
+                Arrays.asList(
+                        DRAWMODE.tp,
+                        DRAWMODE.fp,
+                        DRAWMODE.gt,
+                        DRAWMODE.fn));
+        Collections.reverse(order);
+
+        int y = img.getHeight() - 10;
+        for (DRAWMODE mode : order) {
+            ImageHandler.drawText(img, DRAWMODE.getDescription(mode), 10, y, DRAWMODE.getColor(mode));
+            y -= (textheight + linespace);
+        }
     }
 
     private RecognitionEvaluationResult evaluateRecognitions(List<String> recognizedText) {
@@ -246,102 +267,116 @@ public class Evaluator {
     }
 
     private DetectionEvaluationResult evaluateDetections(Image img, DetectedObjects detectedObjects, List<Textbox> groundTruthTextboxes) {
-        System.out.println("Start get_iou_det");
-        System.out.println("ground truth: " + groundTruthTextboxes);
         int size = detectedObjects.getNumberOfObjects();
-        System.out.println("Detected textboxes: " + size);
-        System.out.println("Textboxes in ground truth: " + groundTruthTextboxes.size());
 
-        int tp = 0, fn = 0, fp = 0;
-        double finalIoU = 0;
+        Set<Textbox> tp = new HashSet<>();
+        Set<Textbox> fn = new HashSet<>();
+        Set<Textbox> fp = new HashSet<>();
+
+        double avgIOU = 0;
         Set<Textbox> foundBoxes = new HashSet<>();
 
-        List<Textbox> textboxes = Converters.DetectedObjects2ListOfTextboxes(detectedObjects, img.getWidth(), img.getHeight());
+        List<Textbox> detectedTextboxes = Converters.DetectedObjects2ListOfTextboxes(detectedObjects, img.getWidth(), img.getHeight());
         int i = 0;
-        for (Textbox detectedTextbox : textboxes) {
-            System.out.println("[" + (i++) + "] " + detectedTextbox);
-
+        for (Textbox gtBox : groundTruthTextboxes) {
             double maxIoU = 0;
             Textbox fittingTextbox = null;
-            for (Textbox gtBox : groundTruthTextboxes) {
-                double iou = detectedTextbox.getIoU(gtBox);
+
+
+            for (Textbox detectedTextbox : detectedTextboxes) {
+                double iou = gtBox.getIoU(detectedTextbox);
                 if (iou > maxIoU) {
                     maxIoU = iou;
-                    fittingTextbox = gtBox;
+                    fittingTextbox = detectedTextbox;
                 }
             }
 
             if (fittingTextbox != null) {
-                tp++;
-                foundBoxes.add(fittingTextbox);
+                tp.add(fittingTextbox);
+                foundBoxes.add(gtBox);
             } else {
-                fp++;
+                fn.add(gtBox);
             }
 
 
-            finalIoU += maxIoU;
-
-            System.out.println("Fitting ground truth: " + fittingTextbox);
-            System.out.println("with IoU: " + maxIoU);
+            avgIOU += maxIoU;
 
         }
 
-        if (tp == 0) {
-            finalIoU = 0;
+        if (tp.isEmpty()) {
+            avgIOU = 0;
         } else {
-            finalIoU /= tp;
+            avgIOU /= tp.size();
         }
-        fn = groundTruthTextboxes.size() - foundBoxes.size();
+        detectedTextboxes.removeAll(tp);
+        fp = Set.copyOf(detectedTextboxes);
 
-        System.out.println("finalIoU: " + finalIoU);
-        System.out.println("tp: " + tp);
-        System.out.println("fn: " + fn);
-        System.out.println("fp: " + fp);
 
-        System.out.println("=================");
+        //System.out.println("average IOU: " + avgIOU);
+        //System.out.println("tp: " + tp.size());
+        //System.out.println("fn: " + fn.size());
+        //System.out.println("fp: " + fp.size());
 
-        return new DetectionEvaluationResult(finalIoU, tp, fn, fp);
+        //System.out.println("=================");
+
+        return new DetectionEvaluationResult(avgIOU, tp, fn, fp);
     }
 
-    private void append_line_option_one(Writer writer,
-                             String image_name,
-                             long ms_tot,
-                             long ms_det,
-                             double iou_det,
-                             int max_stretch,
-                             int num_subimages,
-                             long ms_rec,
-                             double iou_rec,
-                             double jaccard_trigram_distance) throws IOException {
+    private String format_csv_line(String image_name,
+                                 int x_res,
+                                 int y_res,
+                                 long ms_det,
+                                 long ms_rec,
+                                 long ms_tot,
+                                 int tp,
+                                 int fn,
+                                 int fp,
+                                 double iou_avg,
+                                 double jaccard_distance_recognition,
+                                 double jaccard_trigram_distance_recognition)
+            throws IOException {
 
-        writer.append(image_name);
-        writer.append(",");
+        StringBuilder stringBuilder = new StringBuilder();
 
-        writer.append(Long.toString(ms_tot));
-        writer.append(",");
+        stringBuilder.append(image_name);
+        stringBuilder.append(",");
 
-        writer.append(Long.toString(ms_det));
-        writer.append(",");
+        stringBuilder.append(Integer.toString(x_res));
+        stringBuilder.append(",");
 
-        writer.append(Double.toString(iou_det));
-        writer.append(",");
+        stringBuilder.append(Integer.toString(y_res));
+        stringBuilder.append(",");
 
-        writer.append(Integer.toString(max_stretch));
-        writer.append(",");
+        stringBuilder.append(Long.toString(ms_det));
+        stringBuilder.append(",");
 
-        writer.append(Integer.toString(num_subimages));
-        writer.append(",");
+        stringBuilder.append(Long.toString(ms_rec));
+        stringBuilder.append(",");
 
-        writer.append(Long.toString(ms_rec));
-        writer.append(",");
+        stringBuilder.append(Long.toString(ms_tot));
+        stringBuilder.append(",");
 
-        writer.append(Double.toString(iou_rec));
-        writer.append(",");
+        stringBuilder.append(Integer.toString(tp));
+        stringBuilder.append(",");
 
-        writer.append(Double.toString(jaccard_trigram_distance));
+        stringBuilder.append(Integer.toString(fn));
+        stringBuilder.append(",");
+
+        stringBuilder.append(Integer.toString(fp));
+        stringBuilder.append(",");
+
+        stringBuilder.append(Double.toString(iou_avg));
+        stringBuilder.append(",");
+
+        stringBuilder.append(Double.toString(jaccard_distance_recognition));
+        stringBuilder.append(",");
+
+        stringBuilder.append(Double.toString(jaccard_trigram_distance_recognition));
 
 
-        writer.append(System.lineSeparator());
+        stringBuilder.append(System.lineSeparator());
+
+        return stringBuilder.toString();
     }
 
     public static void main(String[] args) {

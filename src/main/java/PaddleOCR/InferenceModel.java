@@ -36,6 +36,51 @@ public class InferenceModel {
     private final Predictor<Image, DetectedObjects> detector;
     private final Predictor<Image, String> recognizer;
 
+    /**
+     * Constructor to create a model based on locally available files
+     *
+     * @param detectionModelZip
+     * @param recognitionModelZip
+     */
+    public InferenceModel(File detectionModelZip, File recognitionModelZip) {
+        // Load text detection model
+        var criteria1 = Criteria.builder()
+                .optEngine("PaddlePaddle")
+                .setTypes(Image.class, DetectedObjects.class)
+                // TODO: replace url with input file
+                .optModelUrls("https://resources.djl.ai/test-models/paddleOCR/mobile/det_db.zip")
+                .optTranslator(new PpWordDetectionTranslator(new ConcurrentHashMap<String, String>()))
+                .build();
+        ZooModel<Image, DetectedObjects> detectionModel = null;
+        try {
+            detectionModel = ModelZoo.loadModel(criteria1);
+        } catch (IOException | ModelNotFoundException | MalformedModelException e) {
+            e.printStackTrace();
+        }
+        assert detectionModel != null;
+        this.detector = detectionModel.newPredictor();
+
+        // Load model for text recognition
+        var criteria3 = Criteria.builder()
+                .optEngine("PaddlePaddle")
+                .setTypes(Image.class, String.class)
+                // TODO: replace url with input file
+                .optModelUrls("https://resources.djl.ai/test-models/paddleOCR/mobile/rec_crnn.zip")
+                .optTranslator(new PpWordRecognitionTranslator())
+                .build();
+        ZooModel<Image, String> recognitionModel = null;
+        try {
+            recognitionModel = ModelZoo.loadModel(criteria3);
+        } catch (IOException | ModelNotFoundException | MalformedModelException e) {
+            e.printStackTrace();
+        }
+        assert recognitionModel != null;
+        this.recognizer = recognitionModel.newPredictor();
+    }
+
+    /**
+     * Default constructor downloads a model for detection and a model for recognition automatically
+     */
     public InferenceModel() {
 
         // Load text detection model
@@ -80,16 +125,7 @@ public class InferenceModel {
         img.getWrappedImage();
 
         img.save(new FileOutputStream("output_0_original.png"), "png");
-/*
-        var criteria1 = Criteria.builder()
-                .optEngine("PaddlePaddle")
-                .setTypes(Image.class, DetectedObjects.class)
-                .optModelUrls("https://resources.djl.ai/test-models/paddleOCR/mobile/det_db.zip")
-                .optTranslator(new PpWordDetectionTranslator(new ConcurrentHashMap<String, String>()))
-                .build();
-        var detectionModel = ModelZoo.loadModel(criteria1);
-        this.detector = detectionModel.newPredictor();
-*/
+
         // Text detection
         var detectedObj = detector.predict(img);
         Image newImage = img.duplicate(Image.Type.TYPE_INT_ARGB);

@@ -61,4 +61,12 @@ public class ImageHandler {
         ymax *= img_height;
         drawRectangle(img, (int) xmin, (int) xmax, (int) ymin, (int) ymax, color);
     }
+
+    public static void drawText(BufferedImage img, String str, int startposX, int startposY, Color color) {
+        // TODO: add background color
+        Graphics2D graph = img.createGraphics();
+        graph.setColor(color);
+        graph.drawString(str, startposX, startposY);
+        graph.dispose();
+    }
 }
